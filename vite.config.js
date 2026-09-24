@@ -3,6 +3,24 @@ import fs from "fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { handleProxy, handleBatchAttendance } from "./api/_lib/portalProxy.js";
+
+// Serves the same /api proxy as the Vercel functions during `npm run dev` / `npm run preview`.
+function portalApiDevProxy() {
+  const mount = (middlewares) => {
+    middlewares.use((req, res, next) => {
+      const pathname = (req.url || "").split("?")[0];
+      if (pathname === "/api/batch/attendance") return handleBatchAttendance(req, res);
+      if (pathname.startsWith("/api/StudentPortalAPI/")) return handleProxy(req, res);
+      next();
+    });
+  };
+  return {
+    name: "portal-api-dev-proxy",
+    configureServer(server) { mount(server.middlewares); },
+    configurePreviewServer(server) { mount(server.middlewares); },
+  };
+}
 
 export default defineConfig({
   build: {
@@ -19,6 +37,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
   },
   plugins: [
+    portalApiDevProxy(),
     react(),
     VitePWA({
       registerType: "autoUpdate",
@@ -109,8 +128,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: "JP Portal",
-        short_name: "JP Portal",
+        name: "Jportal3",
+        short_name: "Jportal3",
         description: "A web portal for students to view attendance and grades.",
         start_url: "/",
         display: "standalone",

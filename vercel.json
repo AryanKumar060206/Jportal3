@@ -1,4 +1,17 @@
 {
+  "regions": [
+    "bom1"
+  ],
+  "rewrites": [
+    {
+      "source": "/api/StudentPortalAPI/:path*",
+      "destination": "/api/proxy?path=:path*"
+    },
+    {
+      "source": "/api/batch/attendance",
+      "destination": "/api/batch-attendance"
+    }
+  ],
   "headers": [
     {
       "source": "/sw.js",

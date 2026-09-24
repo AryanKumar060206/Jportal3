@@ -24,7 +24,7 @@ import AcademicCalendar from "./components/AcademicCalendar";
 import { Calendar as CalendarIcon } from "lucide-react";
 import "./App.css";
 import { ThemeProvider } from "./context/ThemeContext";
-import { getMessMenuOpen as getMessMenuOpenFromCache, setMessMenuOpen as persistMessMenuOpen, getAttendanceGoal as getAttendanceGoalFromCache, setAttendanceGoal as persistAttendanceGoal, getUsername, getPassword, hasAnyPortalData, getDefaultTab, getExamStartDate, getExamEndDate, getSwipeEnabled as getSwipeEnabledFromCache } from '@/components/scripts/cache' 
+import { getMessMenuOpen as getMessMenuOpenFromCache, setMessMenuOpen as persistMessMenuOpen, getAttendanceGoal as getAttendanceGoalFromCache, setAttendanceGoal as persistAttendanceGoal, hasAnyPortalData, getDefaultTab, getExamStartDate, getExamEndDate, getSwipeEnabled as getSwipeEnabledFromCache } from '@/components/scripts/cache' 
 import { Loader2 } from "lucide-react";
 import MessMenu from "./components/MessMenu";
 import InstallPWA from "./components/InstallPWA";
@@ -34,16 +34,35 @@ import { Toaster } from "@/components/ui/sonner";
 
 import {
   WebPortal,
-  LoginError,
+  WebPortalSession,
 } from "https://cdn.jsdelivr.net/npm/jsjiit@0.0.28/dist/jsjiit.esm.js";
 import { serialize_payload } from "@/lib/jiitCrypto";
 import { proxy_url } from "@/lib/api";
+import {
+  buildSession,
+  clearTokenSession,
+  consumeHandoffFromLocation,
+  installSessionWatcher,
+  isTokenExpired,
+  loadTokenSession,
+  repairFromProfile,
+  saveTokenSession,
+  SESSION_EXPIRED_EVENT,
+} from "@/lib/portalSession";
 import { ArtificialWebPortal } from "./components/scripts/artificialW";
 import { saveProfileDataToCache } from '@/components/scripts/cache'
 import Feedback from "./components/Feedback";
 import CGPATargetCalculator from "./components/CGPATargetCalculator";
 
 const w = new WebPortal({ apiUrl: proxy_url, useProxy: false });
+installSessionWatcher(proxy_url);
+
+// A bookmarklet handoff (#/connect?token=...) is read and scrubbed from the URL before
+// the router ever sees it.
+const incomingHandoff = consumeHandoffFromLocation();
+if (incomingHandoff && !incomingHandoff.expired) {
+  saveTokenSession(incomingHandoff);
+}
 
 function AuthenticatedApp({
   w,
@@ -610,47 +629,51 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const username = getUsername();
-    const password = getPassword();
+    const handleSessionExpired = () => {
+      if (!w.session) return;
+      clearTokenSession();
+      w.session = null;
+      setCurrentWebPortal(w);
+      setIsAuthenticated(false);
+      setError("Your WebPortal session has expired. Sign in on WebPortal with Google and run the Jportal3 bookmarklet again.");
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, []);
 
+  useEffect(() => {
     const performLogin = async () => {
+      if (incomingHandoff?.expired) {
+        setError("That sync link has already expired. Sign in on WebPortal again and re-run the bookmarklet.");
+      }
+      const stored = loadTokenSession();
+      if (!stored) {
+        setIsLoading(false);
+        return;
+      }
+      if (isTokenExpired(stored.token)) {
+        clearTokenSession();
+        setError("Your WebPortal session has expired. Sign in on WebPortal with Google and run the Jportal3 bookmarklet again.");
+        setIsLoading(false);
+        return;
+      }
       try {
-        if (username && password) {
-          await w.student_login(username, password);
-          if (w.session) {
-            setIsAuthenticated(true);
-            setCurrentWebPortal(w);
-          }
-        }
+        w.session = buildSession(WebPortalSession, stored);
+        await repairFromProfile(w);
+        setIsAuthenticated(true);
+        setCurrentWebPortal(w);
       } catch (error) {
-        console.error("Login failed:", error);
-        const hasCachedData = hasAnyPortalData();
-
-        if (hasCachedData) {
+        console.error("Restoring WebPortal session failed:", error);
+        if (!loadTokenSession()) {
+          // The portal rejected the token; the expiry handler already reset the UI.
+          return;
+        }
+        if (hasAnyPortalData()) {
           setIsAuthenticated(true);
           setCurrentWebPortal(new ArtificialWebPortal());
           setError(null);
         } else {
-          if (
-            error instanceof LoginError &&
-            error.message.includes(
-              "JIIT Web Portal server is temporarily unavailable",
-            )
-          ) {
-            setError(
-              "JIIT Web Portal server is temporarily unavailable. Please try again later.",
-            );
-          } else if (
-            error instanceof LoginError &&
-            error.message.includes("Failed to fetch")
-          ) {
-            setError("JIIT Web Portal server is temporarily unavailable.");
-          } else {
-            setError(
-              "Login failed. Please check your credentials and try again.",
-            );
-            setIsAuthenticated(false);
-          }
+          setError("JIIT Web Portal server is temporarily unavailable. Please try again later.");
         }
       } finally {
         setIsLoading(false);
@@ -773,6 +796,7 @@ function App() {
                       )}
                       <LoginWrapper
                         onLoginSuccess={(webPortal) => {
+                          setError(null);
                           setIsAuthenticated(true);
                           setCurrentWebPortal(webPortal);
                         }}

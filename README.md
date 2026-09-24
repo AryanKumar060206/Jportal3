@@ -1,4 +1,4 @@
-# JP Portal (JIIT Student Portal)
+# Jportal3 (JIIT Student Portal)
 
 Modern, mobile-first web client for JIIT WebKiosk built with Vite + React, Tailwind, and PWA capabilities. It supports fast navigation, offline fallback from cached data, exam-focused views, and utilities like a CGPA target calculator.
 
@@ -81,9 +81,12 @@ Project Structure (selected)
   - [public/AC.json](public/AC.json): Academic calendar data.
   - [public/pwa-icons](public/pwa-icons): PWA icons referenced by manifest.
 
-Authentication & Offline Mode
-- On startup, the app attempts silent login using `localStorage.username` and `localStorage.password` with the `jsjiit` `WebPortal` (CDN import).
-- If login fails but sufficient cached data exists (attendance/grades/profile), the app swaps to `ArtificialWebPortal`, which serves data from cache-only.
+Authentication (Google SSO + bookmarklet) & Offline Mode
+- JIIT WebPortal now signs students in with Google (`<enrollment>@mail.jiit.ac.in`), so this app no longer asks for a password.
+- The student signs in on the official WebPortal, then runs the **Sync to Jportal3** bookmarklet (or the console snippet on the Connect screen). It reads the session WebPortal already stored in its own `localStorage` (`Token`, `instituteid`, `User`) and redirects to `/#/connect?token=...`. The token travels in the URL hash, so it never reaches a server log, and the app removes it from the address bar straight away.
+- [src/lib/portalSession.js](src/lib/portalSession.js) turns the token into a `jsjiit` `WebPortalSession`, stores it in `localStorage.jp_portal_session`, and fixes up `memberid`/name from the student's profile. Every existing data call keeps working unchanged.
+- When the token expires (the portal returns 401, or the JWT `exp` has passed) the app goes back to the Connect screen. Run the bookmarklet again to continue.
+- If the portal can't be reached but cached data exists (attendance/grades/profile), the app swaps to `ArtificialWebPortal`, which serves data from cache-only.
 - The header shows an “Offline” badge in this mode and navigation restricts features that require live data.
 
 Caching & PWA
@@ -102,11 +105,13 @@ Development Notes
 - The app imports `WebPortal` and `LoginError` from the `jsjiit` CDN ESM build.
 
 Security & Privacy
-- Credentials are stored in `localStorage` for convenience of auto-login. This is suitable for personal devices only. If this is not desired, remove that behavior in [src/App.jsx](src/App.jsx) and [src/components/Login.jsx](src/components/Login.jsx).
-- Do not expose any server secrets; this is a client-only app.
+- No password is ever entered into or stored by this app. Only the short-lived WebPortal session token is kept in `localStorage` (cleared on logout or expiry). Use it on personal devices only.
+- All API calls go through this deployment's own proxy ([api/_lib/portalProxy.js](api/_lib/portalProxy.js)) to `webportal.jiit.ac.in:6011`, so no third-party proxy sees the token. The proxy only forwards `StudentPortalAPI/*` data endpoints, blocks the `token/*` login endpoints, and drops cookies.
 
 Deployment
 - The project is deployable to Vercel. See [vercel.json](vercel.json) and use `npm run build` as the build step.
+- `vercel.json` rewrites `/api/StudentPortalAPI/*` to [api/proxy.js](api/proxy.js) and `/api/batch/attendance` to [api/batch-attendance.js](api/batch-attendance.js), and pins functions to the Mumbai region (`bom1`).
+- `npm run dev` / `npm run preview` serve the same proxy through a Vite middleware (see [vite.config.js](vite.config.js)).
 - Ensure `public/AC.json` exists.
 
 Docs

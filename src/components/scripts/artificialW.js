@@ -19,10 +19,6 @@ export class ArtificialWebPortal {
     this.username = (typeof window !== 'undefined' && getUsername()) || "";
   }
 
-  async student_login(username, password, captcha = {}) {
-    return this.session;
-  }
-
   async __hit(endpoint, options = {}) {
     return { success: true, data: null };
   }

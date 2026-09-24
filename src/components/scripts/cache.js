@@ -273,12 +273,10 @@ export const setUsername = (username) => { try { localStorage.setItem('username'
 export const getUsername = () => { try { return localStorage.getItem('username'); } catch (e) { return null; } };
 export const removeUsername = () => { try { localStorage.removeItem('username'); } catch (e) { } };
 
-export const setPassword = (password) => { try { localStorage.setItem('password', password); } catch (e) { } };
-export const getPassword = () => { try { return localStorage.getItem('password'); } catch (e) { return null; } };
+// WebPortal now uses Google SSO; the app keeps a token session (src/lib/portalSession.js)
+// instead of a password. removePassword only cleans up values left by older versions.
 export const removePassword = () => { try { localStorage.removeItem('password'); } catch (e) { } };
-
-export const setCredentials = (username, password) => { setUsername(username); setPassword(password); };
-export const clearCredentials = () => { removeUsername(); removePassword(); };
+export const clearCredentials = () => { removeUsername(); removePassword(); try { localStorage.removeItem('jp_portal_session'); } catch (e) { } };
 
 export const getDefaultTab = () => { try { return localStorage.getItem('defaultTab') || '/attendance'; } catch (e) { return '/attendance'; } };
 export const setDefaultTab = (tab) => { try { localStorage.setItem('defaultTab', tab); } catch (e) { } };

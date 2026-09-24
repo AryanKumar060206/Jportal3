@@ -173,6 +173,7 @@ export default function Grades({
           setGradesError("Grade sheet is not available");
           return;
         }
+        setGradesError(null);
         setGradesData(data);
         setSemesterData(data.semesterList);
       } catch (err) {

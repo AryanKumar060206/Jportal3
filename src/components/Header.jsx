@@ -5,7 +5,7 @@ import ThemeBtn from "./ui/ThemeBtn";
 import MessMenu from './MessMenu';
 import { Utensils, ArrowLeft, WifiOff, Info } from 'lucide-react';
 import SettingsDialog from './SettingsDialog';
-import { removePassword } from '@/components/scripts/cache';
+import { clearTokenSession } from '@/lib/portalSession';
 import { ArtificialWebPortal } from './scripts/artificialW';
 
 const Header = ({ setIsAuthenticated, messMenuOpen, onMessMenuChange, attendanceGoal, setAttendanceGoal, w }) => {
@@ -31,7 +31,8 @@ const Header = ({ setIsAuthenticated, messMenuOpen, onMessMenuChange, attendance
   }, []);
 
   const handleLogout = () => {
-    removePassword();
+    clearTokenSession();
+    if (w && !(w instanceof ArtificialWebPortal)) w.session = null;
     setIsAuthenticated(false);
     navigate('/login');
   };
