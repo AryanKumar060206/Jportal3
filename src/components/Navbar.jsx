@@ -64,8 +64,12 @@ export default function Navbar({ w }) {
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[60px] bg-card border-t border-border/40 z-50 flex items-center shadow-2xl shadow-black/20 dark:shadow-black/40">
-        <div className="flex w-full items-center px-1">
+      {/* Height grows by the iOS home-indicator inset (0 elsewhere) so tabs sit above the swipe area. */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border/40 z-50 flex items-center shadow-2xl shadow-black/20 dark:shadow-black/40"
+        style={{ height: "calc(60px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        <div className="flex w-full items-center px-3">
           <div className="flex flex-1 justify-around items-center h-full">
             {mobileItems.map((item) => {
               const Icon = item.icon

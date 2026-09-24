@@ -105,3 +105,11 @@ select:focus-visible {
   outline: 2px solid rgb(var(--ring));
   outline-offset: 2px;
 }
+
+/* The mobile navbar grows by the iOS home-indicator inset; give scrolling pages the same
+   extra room so their last card isn't hidden behind it. The inset is 0 outside iOS. */
+@media (max-width: 767px) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
