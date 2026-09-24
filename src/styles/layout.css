@@ -110,6 +110,6 @@ select:focus-visible {
    extra room so their last card isn't hidden behind it. The inset is 0 outside iOS. */
 @media (max-width: 767px) {
   body {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--nav-safe-bottom);
   }
 }

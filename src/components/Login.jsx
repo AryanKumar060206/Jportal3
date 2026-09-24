@@ -176,7 +176,7 @@ export default function Login({ onLoginSuccess, w }) {
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col">
-      <header className="py-3 px-4 border-b border-border">
+      <header className="py-3 px-4 border-b border-border" style={{ paddingTop: "calc(0.75rem + var(--safe-top))" }}>
         <div className="container mx-auto flex items-center justify-between gap-4">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Modern JIIT WebKiosk</h1>
           <ThemeBtn />

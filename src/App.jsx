@@ -758,6 +758,13 @@ function App() {
   return (
     <HelmetProvider>
       <ThemeProvider>
+        {/* Solid strip behind the iOS status bar / Dynamic Island (0px tall elsewhere) so
+            scrolled content never shows through under the clock. */}
+        <div
+          aria-hidden="true"
+          className="fixed inset-x-0 top-0 z-[60] bg-background pointer-events-none"
+          style={{ height: "var(--safe-top)" }}
+        />
         <Router>
           <Toaster 
             position="top-right" 
