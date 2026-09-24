@@ -132,5 +132,8 @@ section[aria-label="Notifications alt+T"] {
    about half the home-indicator inset: enough to clear the swipe bar without a tall gap. */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
+  /* Status-bar inset plus a 5px breathing gap (1/8 of the 40px theme button); stays 0 when
+     there's no inset, so headers elsewhere are unchanged. */
+  --header-safe-top: calc(var(--safe-top) + min(var(--safe-top), 5px));
   --nav-safe-bottom: max(calc(env(safe-area-inset-bottom, 0px) - 16px), 0px);
 }
