@@ -34,7 +34,7 @@ const DEVICE_STEPS = {
   android: [
     "Tap “Copy bookmarklet”, then bookmark any page in Chrome, edit that bookmark, name it JP3 and paste the copied text as its URL.",
     "Open WebPortal and sign in with your college Google account.",
-    "Tap the address bar on WebPortal, type JP3 and tap the bookmark with the star icon. You'll come back here, signed in.",
+    "On WebPortal, tap the address bar, type JP3 and tap the suggestion with the star ☆ icon. You'll come back here, signed in. Don't open it from the Bookmarks menu: Chrome on Android silently ignores bookmarklets opened there.",
   ],
   ios: [
     "Tap “Copy bookmarklet”, then in Safari bookmark any page, edit the bookmark, name it JP3 and paste the copied text as its address.",
