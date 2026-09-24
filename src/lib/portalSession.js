@@ -272,6 +272,21 @@ export function installSessionWatcher(proxyBase) {
   };
 }
 
+// jsjiit (loaded from the CDN, so it can't be edited here) console.logs every request's
+// options, including the Authorization token. Drop just those logs; everything else passes.
+let logRedactionInstalled = false;
+export function installLogRedaction() {
+  if (logRedactionInstalled || typeof console === "undefined") return;
+  logRedactionInstalled = true;
+  const originalLog = console.log.bind(console);
+  const isRequestOptions = (a) =>
+    a && typeof a === "object" && !Array.isArray(a) && ("authenticated" in a || "headers" in a || "exception" in a);
+  console.log = (...args) => {
+    if (args[0] === "fetching" || args.some(isRequestOptions)) return;
+    originalLog(...args);
+  };
+}
+
 // Code that runs on the WebPortal page. It only reads what the portal already stored for
 // the signed-in student; the result is handed to this app (redirect) or copied (snippet).
 function portalReaderSource(finish) {

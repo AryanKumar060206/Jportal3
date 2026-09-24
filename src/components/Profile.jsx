@@ -98,7 +98,6 @@ export default function Profile({
       }
       try {
         const data = await w.get_personal_info();
-        console.log("Profile Data:", data);
         setProfileData(data);
         try { await saveProfileDataToCache(data); } catch (e) { }
       } catch (error) {

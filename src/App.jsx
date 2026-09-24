@@ -42,6 +42,7 @@ import {
   buildSession,
   clearTokenSession,
   consumeHandoffFromLocation,
+  installLogRedaction,
   installSessionWatcher,
   isIOSDevice,
   isStandaloneApp,
@@ -59,6 +60,7 @@ import AppSyncBanner from "./components/AppSyncBanner";
 
 const w = new WebPortal({ apiUrl: proxy_url, useProxy: false });
 installSessionWatcher(proxy_url);
+installLogRedaction();
 
 // A bookmarklet handoff (#/connect?token=...) is read and scrubbed from the URL before
 // the router ever sees it.
@@ -102,7 +104,6 @@ function AuthenticatedApp({
       if (!profileData) {
         try {
           const data = await w.get_personal_info();
-          console.log("Profile Data:", data);
           setProfileData(data);
           try { await saveProfileDataToCache(data); } catch (e) { }
         } catch (error) {

@@ -139,7 +139,35 @@ function sendError(res, err) {
   send(res, jsonResult(502, { error: "Proxy error", details: String(err?.message || err) }));
 }
 
+// Only this app's own pages may use the proxy. Browsers mark cross-site requests with
+// Sec-Fetch-Site and Origin, and other sites can't forge those, so this stops other
+// websites from relaying through us. (Non-browser clients can still fake headers, but
+// they need a valid JIIT token of their own to get anything back.)
+export function isSameOriginRequest(req) {
+  const get = (k) => {
+    const v = req.headers?.[k];
+    return Array.isArray(v) ? v[0] : v;
+  };
+  const fetchSite = get("sec-fetch-site");
+  if (fetchSite && fetchSite !== "same-origin") return false;
+  const origin = get("origin");
+  if (origin) {
+    const host = String(get("x-forwarded-host") || get("host") || "").split(",")[0].trim().toLowerCase();
+    try {
+      if (new URL(origin).host.toLowerCase() !== host) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+function rejectCrossOrigin(res) {
+  send(res, jsonResult(403, { error: "Cross-origin requests are not allowed" }));
+}
+
 export async function handleProxy(req, res) {
+  if (!isSameOriginRequest(req)) return rejectCrossOrigin(res);
   try {
     const url = new URL(req.url, "http://localhost");
     let path;
@@ -159,6 +187,7 @@ export async function handleProxy(req, res) {
 }
 
 export async function handleBatchAttendance(req, res) {
+  if (!isSameOriginRequest(req)) return rejectCrossOrigin(res);
   try {
     if (req.method !== "POST") {
       send(res, jsonResult(405, { error: "Method not allowed" }));
