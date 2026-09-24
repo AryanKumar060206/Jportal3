@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { WebPortalSession } from "https://cdn.jsdelivr.net/npm/jsjiit@0.0.28/dist/jsjiit.esm.js"
 import { showErrorToast, showSuccessToast, showLoadingToast, updateToastError, updateToastSuccess } from '@/lib/toastUtils'
-import { UtensilsCrossed, Calendar, Heart, Laugh, Smartphone, ExternalLink, Bookmark, Copy, Check, Link2, Laptop, Apple } from "lucide-react"
+import { UtensilsCrossed, Calendar, Heart, Laugh, Smartphone, ExternalLink, Bookmark, Copy, Check, Link2, Laptop, Apple, ClipboardPaste } from "lucide-react"
 import InstallPWA from './InstallPWA'
 import MessMenu from "./MessMenu"
 import ThemeBtn from "./ui/ThemeBtn"
@@ -15,6 +15,8 @@ import {
   buildSession,
   getBookmarkletHref,
   getConsoleSnippet,
+  isIOSDevice,
+  isStandaloneApp,
   isTokenExpired,
   loadTokenSession,
   parseHandoff,
@@ -37,7 +39,13 @@ const DEVICE_STEPS = {
   ios: [
     "Tap “Copy bookmarklet”, then in Safari bookmark any page, edit the bookmark, name it JP3 and paste the copied text as its address.",
     "Open WebPortal in Safari and sign in with your college Google account.",
-    "Open Bookmarks and tap JP3 while you're on WebPortal. You'll come back here, signed in.",
+    "Open Bookmarks and tap JP3 while you're on WebPortal. You'll come back to Jportal3 in Safari, signed in. Using the Home Screen app? Tap “Copy sync link for the app” there, then paste it in the app.",
+  ],
+  // iOS Home Screen app: storage is separate from Safari, so the sync is carried over by paste.
+  iosApp: [
+    "Open Safari (not this app), go to WebPortal and sign in with your college Google account. Set up the JP3 bookmark first if you haven't: tap “Copy bookmarklet” below.",
+    "Tap the JP3 bookmark. Jportal3 opens in Safari; tap “Copy sync link for the app” at the top.",
+    "Come back to this app and tap “Paste from clipboard” below.",
   ],
 }
 
@@ -61,9 +69,8 @@ async function copyText(text) {
 }
 
 function detectDevice() {
-  const ua = typeof navigator !== "undefined" ? navigator.userAgent : ""
-  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "ios"
-  if (/Android/.test(ua)) return "android"
+  if (isIOSDevice()) return "ios"
+  if (typeof navigator !== "undefined" && /Android/.test(navigator.userAgent)) return "android"
   return "desktop"
 }
 
@@ -75,6 +82,8 @@ export default function Login({ onLoginSuccess, w }) {
   const [copied, setCopied] = useState(null)
   const [savedSession, setSavedSession] = useState(null)
   const bookmarkletRef = useRef(null)
+  const inIOSApp = isIOSDevice() && isStandaloneApp()
+  const steps = device === "ios" && inIOSApp ? DEVICE_STEPS.iosApp : DEVICE_STEPS[device]
 
   const appOrigin = typeof window !== "undefined" ? window.location.origin : ""
   const bookmarkletHref = useMemo(() => getBookmarkletHref(appOrigin), [appOrigin])
@@ -134,6 +143,16 @@ export default function Login({ onLoginSuccess, w }) {
       if (!rejected) setSavedSession(saved)
       setStatus({ isLoading: false, error: message })
       updateToastError(toastId, "Connection failed", message)
+    }
+  }
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      setPasted(text)
+      connectWith(parseHandoff(text))
+    } catch {
+      showErrorToast("Can't read clipboard", "Long-press the box below and choose Paste instead.")
     }
   }
 
@@ -237,7 +256,7 @@ export default function Login({ onLoginSuccess, w }) {
                 </div>
 
                 <ol className="space-y-2 text-sm">
-                  {DEVICE_STEPS[device].map((step, idx) => (
+                  {steps.map((step, idx) => (
                     <li key={idx} className="flex gap-2">
                       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">{idx + 1}</span>
                       <span className="text-muted-foreground">{step}</span>
@@ -264,13 +283,23 @@ export default function Login({ onLoginSuccess, w }) {
                       {copied === "bookmarklet" ? <Check size={16} /> : <Bookmark size={16} />} Copy bookmarklet
                     </Button>
                   )}
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => window.open(WEBPORTAL_URL, "_blank", "noopener")}>
-                    <ExternalLink size={16} /> Open WebPortal
-                  </Button>
+                  {!inIOSApp && (
+                    <Button type="button" variant="outline" className="flex-1" onClick={() => window.open(WEBPORTAL_URL, "_blank", "noopener")}>
+                      <ExternalLink size={16} /> Open WebPortal
+                    </Button>
+                  )}
                 </div>
 
+                {inIOSApp && (
+                  <Button type="button" className="w-full" disabled={status.isLoading} onClick={handlePasteFromClipboard}>
+                    <ClipboardPaste size={16} /> Paste from clipboard
+                  </Button>
+                )}
+
                 <details className="rounded-lg border border-border/70 p-3 text-sm">
-                  <summary className="cursor-pointer font-medium text-foreground">Bookmarklet not working? Paste a sync link instead</summary>
+                  <summary className="cursor-pointer font-medium text-foreground">
+                    {inIOSApp ? "Paste the sync link manually" : "Bookmarklet not working? Paste a sync link instead"}
+                  </summary>
                   <div className="mt-3 space-y-3">
                     <p className="text-muted-foreground">
                       On WebPortal (after signing in) open the browser console (Ctrl+Shift+J / Cmd+Option+J), paste the
@@ -291,9 +320,14 @@ export default function Login({ onLoginSuccess, w }) {
                         spellCheck={false}
                         className="w-full rounded-md border border-input bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       />
-                      <Button type="submit" className="w-full" disabled={status.isLoading || !pasted.trim()}>
-                        <Link2 size={16} /> {status.isLoading ? "Connecting..." : "Connect"}
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" className="flex-1" disabled={status.isLoading} onClick={handlePasteFromClipboard}>
+                          <ClipboardPaste size={16} /> Paste
+                        </Button>
+                        <Button type="submit" className="flex-1" disabled={status.isLoading || !pasted.trim()}>
+                          <Link2 size={16} /> {status.isLoading ? "Connecting..." : "Connect"}
+                        </Button>
+                      </div>
                     </form>
                   </div>
                 </details>

@@ -43,6 +43,8 @@ import {
   clearTokenSession,
   consumeHandoffFromLocation,
   installSessionWatcher,
+  isIOSDevice,
+  isStandaloneApp,
   isTokenExpired,
   loadTokenSession,
   repairFromProfile,
@@ -53,6 +55,7 @@ import { ArtificialWebPortal } from "./components/scripts/artificialW";
 import { saveProfileDataToCache } from '@/components/scripts/cache'
 import Feedback from "./components/Feedback";
 import CGPATargetCalculator from "./components/CGPATargetCalculator";
+import AppSyncBanner from "./components/AppSyncBanner";
 
 const w = new WebPortal({ apiUrl: proxy_url, useProxy: false });
 installSessionWatcher(proxy_url);
@@ -63,6 +66,8 @@ const incomingHandoff = consumeHandoffFromLocation();
 if (incomingHandoff && !incomingHandoff.expired) {
   saveTokenSession(incomingHandoff);
 }
+// On iOS the Home Screen app can't see Safari's storage, so offer to copy the sync over.
+const offerAppSync = !!incomingHandoff && !incomingHandoff.expired && isIOSDevice() && !isStandaloneApp();
 
 function AuthenticatedApp({
   w,
@@ -563,6 +568,7 @@ function App() {
   const [error, setError] = useState(null);
   const [currentWebPortal, setCurrentWebPortal] = useState(w);
   const [showOfflinePrompt, setShowOfflinePrompt] = useState(false);
+  const [showAppSync, setShowAppSync] = useState(offerAppSync);
   const [messMenuOpen, setMessMenuOpen] = useState(() => {
     return getMessMenuOpenFromCache();
   });
@@ -760,6 +766,9 @@ function App() {
             closeButton
             theme="system"
           />
+          {showAppSync && isAuthenticated && currentWebPortal === w && w.session && (
+            <AppSyncBanner onDismiss={() => setShowAppSync(false)} />
+          )}
           <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
             <Routes>
               <Route

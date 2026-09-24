@@ -74,6 +74,7 @@ export function parseHandoff(input) {
       memberid: (p.get("mid") || "").trim(),
       clientid: (p.get("cid") || "").trim(),
       name: (p.get("name") || "").trim(),
+      memberidVerified: p.get("mv") === "1",
     };
   }
 
@@ -151,6 +152,30 @@ export function clearTokenSession({ keepUsername = true } = {}) {
     // ignore
   }
   if (!keepUsername) removeUsername();
+}
+
+// Sync text for moving a session into another copy of the app (e.g. from Safari into the
+// iOS Home Screen app, which has separate storage). Same format the bookmarklet produces.
+export function buildSyncText(stored) {
+  if (!stored?.token) return "";
+  const p = new URLSearchParams({ token: stored.token });
+  if (stored.enroll) p.set("enroll", stored.enroll);
+  if (stored.inst) p.set("inst", stored.inst);
+  if (stored.memberid) p.set("mid", stored.memberid);
+  if (stored.memberidVerified) p.set("mv", "1");
+  if (stored.clientid) p.set("cid", stored.clientid);
+  if (stored.name) p.set("name", stored.name);
+  return p.toString();
+}
+
+export function isIOSDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+}
+
+export function isStandaloneApp() {
+  if (typeof window === "undefined") return false;
+  return window.navigator.standalone === true || !!window.matchMedia?.("(display-mode: standalone)").matches;
 }
 
 // Reads a #/connect?token=... handoff from the current URL, saves it, and scrubs the
