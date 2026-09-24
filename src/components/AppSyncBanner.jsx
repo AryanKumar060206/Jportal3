@@ -26,19 +26,23 @@ export default function AppSyncBanner({ onDismiss }) {
   }
 
   return (
-    <div className="border-b border-border bg-primary/10 px-4 py-3 text-sm" role="region" aria-label="Sync to Home Screen app">
-      <div className="container mx-auto flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-foreground">
-          <span className="font-medium">Using Jportal3 from your Home Screen?</span>{" "}
-          <span className="text-muted-foreground">It can&apos;t see this Safari sign-in. Copy the sync link, then paste it in the app.</span>
-        </p>
-        <div className="flex shrink-0 gap-2">
-          <Button type="button" size="sm" onClick={handleCopy}>
-            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy sync link for the app"}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onDismiss} aria-label="Dismiss">
-            <X size={14} />
-          </Button>
+    // Solid bg-background underneath: the page body is transparent, so a translucent tint
+    // alone would show the browser's default (white in light mode) through it.
+    <div className="border-b border-border bg-background text-sm" role="region" aria-label="Sync to Home Screen app">
+      <div className="bg-primary/10 px-4 py-3">
+        <div className="container mx-auto flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-foreground">
+            <span className="font-medium">Using Jportal3 from your Home Screen?</span>{" "}
+            <span className="text-muted-foreground">It can&apos;t see this Safari sign-in. Copy the sync link, then paste it in the app.</span>
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" size="sm" onClick={handleCopy}>
+              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy sync link for the app"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onDismiss} aria-label="Dismiss">
+              <X size={14} />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
