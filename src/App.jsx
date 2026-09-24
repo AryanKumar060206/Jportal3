@@ -31,6 +31,7 @@ import InstallPWA from "./components/InstallPWA";
 import { UtensilsCrossed } from "lucide-react";
 import { HelmetProvider } from "react-helmet-async";
 import { Toaster } from "@/components/ui/sonner";
+import { Analytics } from '@vercel/analytics/react';
 
 import {
   WebPortal,
@@ -760,6 +761,7 @@ function App() {
             closeButton
             theme="system"
           />
+          <Analytics />
           <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
             <Routes>
               <Route
