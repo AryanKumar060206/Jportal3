@@ -34,7 +34,6 @@ import {
   Info,
 } from "lucide-react";
 import { Helmet } from 'react-helmet-async';
-import { proxy_url } from '@/lib/api';
 import { calculateClassesNeeded, calculateClassesCanMiss } from '@/lib/math';
 
 const CACHE_DURATION = 4 * 60 * 60 * 1000;
@@ -59,7 +58,6 @@ const saveStoredAttendanceSemester = (username, semester) => {
 
 const Attendance = ({
   w,
-  serialize_payload,
   attendanceData,
   setAttendanceData,
   semestersData,
@@ -538,72 +536,6 @@ const Attendance = ({
     } catch (error) {
       console.error(`Failed to fetch fresh subject attendance for ${subject.name}:`, error);
       setSubjectCacheStatus(p => ({ ...p, [subject.name]: 'error' }));
-    }
-  };
-
-  const fetchSubjectsBatch = async (subjectsToFetch) => {
-    try {
-      if (!w?.session) {
-        console.warn('No session available for batch attendance fetch');
-        return;
-      }
-
-      const calls = await Promise.all(subjectsToFetch.map(async (subj) => {
-        const attendance = attendanceData[selectedSem.registration_id];
-        const subjectData = attendance.studentattendancelist.find(s => s.subjectcode === subj.name);
-        if (!subjectData) return null;
-        const subjectcomponentids = ["Lsubjectcomponentid", "Psubjectcomponentid", "Tsubjectcomponentid"].filter(id => subjectData[id]).map(id => subjectData[id]);
-        if (subjectcomponentids.length === 0) return { key: subj.name, empty: true };
-        const payload = await serialize_payload({
-          cmpidkey: subjectcomponentids.map((id) => ({ subjectcomponentid: id })),
-          clientid: w.session.clientid,
-          instituteid: w.session.instituteid,
-          registrationcode: selectedSem.registration_code,
-          registrationid: selectedSem.registration_id,
-          subjectcode: subj.name,
-          subjectid: subjectData.subjectid
-        });
-        const callHeaders = await w.session.get_headers();
-        return { path: "StudentPortalAPI/StudentClassAttendance/getstudentsubjectpersentage", method: "POST", body: payload, key: subj.name, headers: callHeaders };
-      }));
-
-      const filteredCalls = calls.filter(c => c && !c.empty);
-
-      calls.filter(c => c && c.empty).forEach(c => {
-        setSubjectAttendanceData(prev => ({ ...prev, [c.key]: [] }));
-        setSubjectCacheStatus(p => ({ ...p, [c.key]: 'cached' }));
-      });
-
-      if (filteredCalls.length === 0) return;
-
-      const batchReq = { calls: filteredCalls };
-
-      const workerBase = (function () { try { return new URL(proxy_url).origin; } catch (e) { return proxy_url.replace(/\/StudentPortalAPI.*$/, ''); } })();
-      const batchUrl = `${workerBase.replace(/\/$/, '')}/api/batch/attendance`;
-      const res = await fetch(batchUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(batchReq), credentials: 'include', mode: 'cors' });
-      if (!res.ok) throw new Error('Batch request failed');
-      const result = await res.json();
-      if (!result.responses) throw new Error('Invalid batch response');
-
-      for (const r of result.responses) {
-        try {
-          if (r.ok && r.body && r.body.response && r.body.response.studentAttdsummarylist) {
-            await saveSubjectDataToCache(r.body.response.studentAttdsummarylist, r.key, (getUsername() || w.username || 'user'), selectedSem);
-            setSubjectAttendanceData(prev => ({ ...prev, [r.key]: r.body.response.studentAttdsummarylist }));
-            setSubjectCacheStatus(p => ({ ...p, [r.key]: 'cached' }));
-          } else {
-            setSubjectAttendanceData(prev => ({ ...prev, [r.key]: [] }));
-            setSubjectCacheStatus(p => ({ ...p, [r.key]: 'cached' }));
-          }
-        } catch (err) {
-          console.error('Error processing batch response for', r.key, err);
-          setSubjectAttendanceData(prev => ({ ...prev, [r.key]: [] }));
-          setSubjectCacheStatus(p => ({ ...p, [r.key]: 'cached' }));
-        }
-      }
-
-    } catch (err) {
-      console.error('Failed batch fetch for subjects:', err);
     }
   };
 

@@ -13,6 +13,19 @@ import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { getTimetableModifiedEvents, setTimetableIcs, getTimetableIcs, setTimetableModifiedEvents, removeTimetableModifiedEvents } from '@/components/scripts/cache';
 
+// Left by the "Create personalized Timetable" button on Subjects: { semId, ts }. Read once,
+// and ignored if it's stale (e.g. left over from earlier in the session).
+const takeTimetableRequest = () => {
+  try {
+    const raw = sessionStorage.getItem('timetableRequest');
+    sessionStorage.removeItem('timetableRequest');
+    const request = raw ? JSON.parse(raw) : null;
+    return request?.semId && Date.now() - request.ts < 60 * 1000 ? request : null;
+  } catch (e) {
+    return null;
+  }
+};
+
 const Timetable = ({ w, profileData, subjectData, subjectSemestersData }) => {
   const [loading, setLoading] = useState(true);
   const [showCustomizer, setShowCustomizer] = useState(false);
@@ -112,6 +125,7 @@ const Timetable = ({ w, profileData, subjectData, subjectSemestersData }) => {
   useEffect(() => {
     const initTimetable = async () => {
       setLoading(true);
+      const request = takeTimetableRequest();
       const savedEvents = getTimetableModifiedEvents();
       if (savedEvents) {
         setIcalEvents(savedEvents.map(ev => ({ 
@@ -129,6 +143,8 @@ const Timetable = ({ w, profileData, subjectData, subjectSemestersData }) => {
           setShowCustomizer(true);
         }
       }
+      // Coming from Subjects to create a timetable: open the generator even if one is saved.
+      if (request) setShowCustomizer(true);
 
       let currentSems = localSemestersData;
       if (!currentSems?.semesters?.length && w?.get_registered_semesters) {
@@ -145,11 +161,12 @@ const Timetable = ({ w, profileData, subjectData, subjectSemestersData }) => {
       }
 
       if (currentSems?.semesters?.length && !selectedSemesterId) {
+        const requestedSemester = request && currentSems.semesters.find(sem => sem.registration_id === request.semId);
         const currentYear = new Date().getFullYear().toString();
         const currentYearSemester = currentSems.semesters.find(sem =>
           sem.registration_code && sem.registration_code.includes(currentYear)
         );
-        setSelectedSemesterId(currentYearSemester?.registration_id || currentSems.semesters[0].registration_id);
+        setSelectedSemesterId((requestedSemester || currentYearSemester || currentSems.semesters[0]).registration_id);
       }
       setLoading(false);
     };

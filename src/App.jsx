@@ -350,7 +350,6 @@ function AuthenticatedApp({
                     element={
                       <Attendance
                         w={w}
-                        serialize_payload={serialize_payload}
                         attendanceData={attendanceData}
                         setAttendanceData={setAttendanceData}
                         semestersData={attendanceSemestersData}

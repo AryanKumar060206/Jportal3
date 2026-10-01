@@ -679,7 +679,7 @@ export default function Grades({
       console.error("Failed to download marks:", err);
       updateToastError(toastId, "Download failed", err?.message || "Unable to download marks.");
       showErrorToast("Marks Download Error", err?.message || "Failed to download marks.");
-    } filll: {
+    } finally {
       setIsDownloading(false);
     }
   };
@@ -882,9 +882,11 @@ export default function Grades({
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {getGradeCardItems(gradeCard).sort((a, b) => {
+                      {/* Sort a copy: sorting the state array in place meant "default" couldn't restore the portal's order. */}
+                      {[...getGradeCardItems(gradeCard)].sort((a, b) => {
                         if (gradeSort !== 'default') {
-                          const diff = gradePointMap[a.grade] - gradePointMap[b.grade];
+                          // Grades outside the map (e.g. audit/incomplete) sort lowest instead of producing NaN.
+                          const diff = (gradePointMap[a.grade] ?? -1) - (gradePointMap[b.grade] ?? -1);
                           return gradeSort === 'asc' ? diff : -diff;
                         }
                         if (creditSort !== 'default') {
