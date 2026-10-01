@@ -52,7 +52,7 @@ import {
   saveTokenSession,
   SESSION_EXPIRED_EVENT,
 } from "@/lib/portalSession";
-import { ArtificialWebPortal } from "./components/scripts/artificialW";
+import { ArtificialWebPortal, isOfflinePortal } from "./components/scripts/artificialW";
 import { saveProfileDataToCache } from '@/components/scripts/cache'
 import Feedback from "./components/Feedback";
 import CGPATargetCalculator from "./components/CGPATargetCalculator";
@@ -105,7 +105,9 @@ function AuthenticatedApp({
         try {
           const data = await w.get_personal_info();
           setProfileData(data);
-          try { await saveProfileDataToCache(data); } catch (e) { }
+          if (!isOfflinePortal(w)) {
+            try { await saveProfileDataToCache(data); } catch (e) { }
+          }
         } catch (error) {
           console.error("Failed to fetch profile data in App:", error);
         }
@@ -207,8 +209,8 @@ function AuthenticatedApp({
       "/subjects",
       "/profile",
     ];
-    const currentPath = window.location.hash.replace("#", "");
-    const currentIndex = routes.indexOf(currentPath);
+    // pathname, not the raw hash: pages like /grades?tab=marks would otherwise not match.
+    const currentIndex = routes.indexOf(location.pathname);
 
     if (isLeftSwipe && currentIndex < routes.length - 1) {
       setTransitionDirection("forward");

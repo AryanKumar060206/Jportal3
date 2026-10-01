@@ -113,8 +113,8 @@ export default function SettingsDialog({ onLogout, attendanceGoal, setAttendance
   }
 
   const profileData = getProfileDataRaw();
-  const studentName = profileData?.studentname || 'User';
-  const studentImage = profileData?.imagepath;
+  const studentName = profileData?.generalinformation?.studentname || profileData?.studentname || 'User';
+  const studentImage = profileData?.["photo&signature"]?.photo || profileData?.imagepath;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -51,8 +51,8 @@ export default function Fee({ w, serialize_payload }) {
       updateToastSuccess(toastId, "Report ready", "Fee report download started.");
     } catch (error) {
       updateToastError(toastId, "Download failed", "Failed to download fee report.");
+      // Toasts only: a failed download shouldn't replace the loaded fee summary with an error page.
       showErrorToast("Fee Report Error", error?.message || "Failed to download report. Please try again.");
-      setError("Failed to download report. Please try again.");
     } finally {
       setDownloadingReport(false);
     }
@@ -60,6 +60,7 @@ export default function Fee({ w, serialize_payload }) {
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     (async () => {
       try {
         if (!w?.get_fee_summary) {

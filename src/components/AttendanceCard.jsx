@@ -35,9 +35,14 @@ const AttendanceCard = ({
 
   const [loading, setLoading] = useState(false);
   const [selDate, setSelDate] = useState(null);
-  const [attn, setAttn] = useState(attendance);
-  const [needClass, setNeedClass] = useState(classesNeeded);
-  const [missClass, setMissClass] = useState(classesCanMiss);
+  // New-format subjects are counted from daily data (calcFromDaily); old-format ones use the
+  // overview totals from props, so they follow goal changes and background refreshes.
+  const [dailyAttn, setAttn] = useState(attendance);
+  const [dailyNeed, setNeedClass] = useState(classesNeeded);
+  const [dailyMiss, setMissClass] = useState(classesCanMiss);
+  const attn = isNewFormat ? dailyAttn : attendance;
+  const needClass = isNewFormat ? dailyNeed : classesNeeded;
+  const missClass = isNewFormat ? dailyMiss : classesCanMiss;
 
   const isFetching = loading || (subjectCacheStatus && subjectCacheStatus[subject.name] === 'fetching');
 

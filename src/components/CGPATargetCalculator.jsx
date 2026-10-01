@@ -86,13 +86,12 @@ export default function CGPATargetCalculator({ w }) {
   };
 
   const findMarksCacheForSemester = useCallback(async (semester, username, subjectCodes = []) => {
+    // Only this student's entry for this semester (the key Grades writes). Generic keys and a
+    // scan of all of localStorage could return another semester's or another student's marks.
     const candidates = [
       getSemesterCacheKey(semester, username),
       `marks-${semester?.registration_id || ""}-${username}`,
       `marks-${semester?.registration_code || ""}-${username}`,
-      `marks-${username}`,
-      `marks`, 
-      `marksData`
     ].filter(Boolean);
 
     const uniqueCandidates = [...new Set(candidates)];
@@ -111,7 +110,6 @@ export default function CGPATargetCalculator({ w }) {
       });
     };
 
-    // First, test predefined indexedDB/cache candidates
     for (const candidate of uniqueCandidates) {
       try {
         const cached = await getFromCache(candidate);
@@ -121,28 +119,6 @@ export default function CGPATargetCalculator({ w }) {
       } catch {
         // Continue to the next candidate
       }
-    }
-    // Fallback: Aggressive localStorage scan for valid payloads
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-
-        const rawStr = localStorage.getItem(key);
-        // Quick filter to ensure string has json-like structure before parsing
-        if (!rawStr || (!rawStr.includes('{') && !rawStr.includes('['))) continue;
-
-        try {
-          const raw = JSON.parse(rawStr);
-          if (checkPayload(raw)) {
-            return raw;
-          }
-        } catch {
-          // ignore parsing errors and continue search
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to scan cached marks entries:', e);
     }
 
     return null;
@@ -225,7 +201,7 @@ export default function CGPATargetCalculator({ w }) {
         }
 
         try {
-          const username = w?.username || getUsername() || "user";
+          const username = getUsername() || "user";
           const subjectCodes = processedSubjects.map((subject) => subject.code).filter(Boolean);
           const cached = await findMarksCacheForSemester(semester, username, subjectCodes);
           const cachedPayload = cached?.data || cached;

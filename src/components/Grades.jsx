@@ -40,7 +40,7 @@ import {
   saveToCache,
   getFromCache,
 } from "@/components/scripts/cache";
-import { getGradesActiveTab, setGradesActiveTab, getMarksSelectedSemester, setMarksSelectedSemester } from '@/components/scripts/cache';
+import { getGradesActiveTab, setGradesActiveTab, getMarksSelectedSemester, setMarksSelectedSemester, getUsername } from '@/components/scripts/cache';
 import GradeCard from "./GradeCard";
 import MarksCard from "./MarksCard";
 import SemCard from "./SemCard";
@@ -89,7 +89,6 @@ export default function Grades({
   const { themeMode } = useTheme();
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingGradeReport, setIsDownloadingGradeReport] = useState(false);
-  const [mounted, setMounted] = useState(true);
   const [marksCacheTimestamp, setMarksCacheTimestamp] = useState(null);
   const [gradeSort, setGradeSort] = useState('default');
   const [creditSort, setCreditSort] = useState('default');
@@ -142,7 +141,12 @@ export default function Grades({
   };
   const marksFetchInFlight = React.useRef(new Set());
   const lastRefreshRef = React.useRef({});
-  const marksRequestIdRef = React.useRef(0);
+  // registration_id of the marks semester on screen; fetches that land for another one are
+  // still kept and cached, they just don't replace what's displayed.
+  const shownMarksRegIdRef = React.useRef(null);
+  // Per-student key. WebPortal has no `username`, so the old `w.username || "user"` gave every
+  // account on the device the same key and could show one student another's marks.
+  const marksCacheKey = (sem) => `marks-${sem.registration_code}-${getUsername() || "user"}`;
 
   useEffect(() => {
     const tabFromUrl = searchParams.get("tab");
@@ -170,7 +174,7 @@ export default function Grades({
         }
         const data = await w.get_sgpa_cgpa();
         if (!data || Object.keys(data).length === 0) {
-          setGradesError("Grade sheet is not available");
+          setGradesError(isOffline ? "Grades aren't available offline" : "Grade sheet is not available");
           return;
         }
         setGradesError(null);
@@ -188,7 +192,9 @@ export default function Grades({
         setGradesLoading(false);
       }
     };
-    if (!isOffline) fetchData();
+    // Runs offline too (the offline portal reads cached grades); skipping it left
+    // gradesLoading stuck at true.
+    fetchData();
   }, [w, semesterData, isOffline]);
 
   useEffect(() => {
@@ -266,25 +272,24 @@ export default function Grades({
 
   useEffect(() => {
     if (activeTab !== 'marks' || isOffline) return;
-    setMounted(true);
     const processPdfMarks = async () => {
       if (!selectedMarksSem) return;
-      const requestId = ++marksRequestIdRef.current;
+      const regId = selectedMarksSem.registration_id;
+      shownMarksRegIdRef.current = regId;
       setMarksError(null);
-      if (marksData[selectedMarksSem.registration_id]) {
-        setMarksSemesterData(marksData[selectedMarksSem.registration_id]);
+      if (marksData[regId]) {
+        setMarksSemesterData(marksData[regId]);
         setMarksLoading(false);
         return;
       }
       setMarksLoading(true);
-      const username = w.username || "user";
-      const cacheKey = `marks-${selectedMarksSem.registration_code}-${username}`;
-      const cached = await getFromCache(cacheKey);
-      if (cached && mounted && requestId === marksRequestIdRef.current) {
+      const cached = await getFromCache(marksCacheKey(selectedMarksSem));
+      if (shownMarksRegIdRef.current !== regId) return;
+      if (cached) {
         setMarksSemesterData(cached.data || cached);
         setMarksData((prev) => ({
           ...prev,
-          [selectedMarksSem.registration_id]: cached.data || cached,
+          [regId]: cached.data || cached,
         }));
         setMarksCacheTimestamp(cached.timestamp || null);
         setIsMarksFromCache(true);
@@ -292,24 +297,29 @@ export default function Grades({
         const cacheTs = cached.timestamp || 0;
         if (Date.now() - cacheTs > 10 * 60 * 1000) {
           setIsMarksRefreshing(true);
-          await fetchFreshMarksData(requestId);
+          await fetchFreshMarksData();
           setIsMarksRefreshing(false);
         }
         return;
       }
-      await fetchFreshMarksData(requestId);
+      await fetchFreshMarksData();
     };
-    const fetchFreshMarksData = async (requestId) => {
-      const regId = selectedMarksSem.registration_id;
+    const fetchFreshMarksData = async () => {
+      const sem = selectedMarksSem;
+      const regId = sem.registration_id;
+      const isShown = () => shownMarksRegIdRef.current === regId;
+      // Already loading this semester; that fetch updates the view when it lands.
+      if (marksFetchInFlight.current.has(regId)) return;
+      const last = lastRefreshRef.current[regId];
+      if (last && Date.now() - last < 10 * 60 * 1000) {
+        setMarksLoading(false);
+        return;
+      }
+      marksFetchInFlight.current.add(regId);
       let toastId;
       try {
-        if (!mounted || requestId !== marksRequestIdRef.current) return;
-        if (marksFetchInFlight.current.has(regId)) return;
-        const last = lastRefreshRef.current[regId];
-        if (last && Date.now() - last < 10 * 60 * 1000) return;
-        marksFetchInFlight.current.add(regId);
-        toastId = showLoadingToast(`Loading marks for ${selectedMarksSem.registration_code}...`, `marks-loading-${regId}`);
-        const ENDPOINT = `/studentsexamview/printstudent-exammarks/${w.session.instituteid}/${selectedMarksSem.registration_id}/${selectedMarksSem.registration_code}`;
+        toastId = showLoadingToast(`Loading marks for ${sem.registration_code}...`, `marks-loading-${regId}`);
+        const ENDPOINT = `/studentsexamview/printstudent-exammarks/${w.session.instituteid}/${sem.registration_id}/${sem.registration_code}`;
         const headers = await w.session.get_headers();
         const { getPyodideWithPackages } = await import("@/lib/pyodide");
         const pyodide = await getPyodideWithPackages();
@@ -326,27 +336,24 @@ export default function Grades({
           marks
         `);
         try { pyodide.globals.delete("data"); } catch (e) { }
-        if (!mounted || requestId !== marksRequestIdRef.current) return;
-        if (mounted) {
-          const result = res.toJs({
-            dict_converter: Object.fromEntries,
-            create_pyproxies: false,
-          });
+        const result = res.toJs({
+          dict_converter: Object.fromEntries,
+          create_pyproxies: false,
+        });
+        // Keep and cache the result even if another semester is on screen by now.
+        setMarksData((prev) => ({
+          ...prev,
+          [regId]: result,
+        }));
+        await saveToCache(marksCacheKey(sem), result, 240);
+        lastRefreshRef.current[regId] = Date.now();
+        updateToastSuccess(toastId, "Marks loaded", "Marks data has been refreshed.");
+        if (isShown()) {
           setMarksSemesterData(result);
-          setMarksData((prev) => ({
-            ...prev,
-            [selectedMarksSem.registration_id]: result,
-          }));
-          const username = w.username || "user";
-          const cacheKey = `marks-${selectedMarksSem.registration_code}-${username}`;
-          await saveToCache(cacheKey, result, 240);
           setMarksCacheTimestamp(Date.now());
           setIsMarksFromCache(false);
-          lastRefreshRef.current[regId] = Date.now();
-          updateToastSuccess(toastId, "Marks loaded", "Marks data has been refreshed.");
         }
       } catch (error) {
-        if (!mounted || requestId !== marksRequestIdRef.current) return;
         console.error("Failed to load marks:", error);
         const rawMessage = String(error?.message || "Could not load marks data");
         const normalized = rawMessage.toLowerCase();
@@ -358,17 +365,17 @@ export default function Grades({
           userMessage = "Could not download the marks PDF for this semester.";
         }
 
-        setMarksError(userMessage);
-        if (mounted) setMarksSemesterData({ courses: [] });
         if (toastId) updateToastError(toastId, "Marks load failed", userMessage);
+        if (!isShown()) return;
+        setMarksError(userMessage);
+        setMarksSemesterData({ courses: [] });
         showErrorToast("Marks Load Error", userMessage);
       } finally {
-        if (mounted && requestId === marksRequestIdRef.current) setMarksLoading(false);
-        try { marksFetchInFlight.current.delete(selectedMarksSem.registration_id); } catch { }
+        if (isShown()) setMarksLoading(false);
+        marksFetchInFlight.current.delete(regId);
       }
     };
     if (selectedMarksSem) processPdfMarks();
-    return () => { setMounted(false); };
   }, [selectedMarksSem, activeTab]);
 
   const handleSemesterChange = async (value) => {
@@ -392,12 +399,78 @@ export default function Grades({
     }
   };
 
-  // CRYPTO PRODUCTION REFIT: Re-maps key parameters to align cleanly with the Portal engine's expected layouts
+  const loadGradeCard = async (sem) => {
+    if (gradeCards[sem.registration_id]) return gradeCards[sem.registration_id];
+    const card = await w.get_grade_card(sem);
+    if (card) {
+      card.semesterId = sem.registration_id;
+      setGradeCards(prev => ({ ...prev, [sem.registration_id]: card }));
+    }
+    return card;
+  };
+
+  // Registration ids/codes an object carries (the field names differ between endpoints).
+  const registrationKeys = (obj) =>
+    [obj?.registration_id, obj?.registrationid, obj?.registration_code, obj?.registrationcode]
+      .filter((v) => v !== undefined && v !== null && v !== "")
+      .map(String);
+  const sameRegistration = (a, b) => {
+    const keys = registrationKeys(b);
+    return registrationKeys(a).some((k) => keys.includes(k));
+  };
+
+  // Pairs a grade card with its SGPA-summary row, which carries no registration id. The earned
+  // credits and SGPA points on the card's courses add up to that row's totals. (The courses'
+  // own stynumber is the student's current semester, not the course's, so it can't be used.)
+  const gradeCardMatchesSemRow = (card, row) => {
+    let earned = 0, sgpaPoints = 0;
+    for (const c of getGradeCardItems(card)) {
+      earned += parseFloat(c.earnedcredit) || 0;
+      sgpaPoints += parseFloat(c.sgpapoints) || 0;
+    }
+    return earned > 0
+      && Math.abs(Number(row.totalearnedcredit ?? row.totalearnedcredits) - earned) < 0.01
+      && Math.abs(Number(row.totalpointsecuredsgpa) - sgpaPoints) < 0.01;
+  };
+  const uniqueSemRowFor = (card) => {
+    const rows = (semesterData || []).filter((row) => gradeCardMatchesSemRow(card, row));
+    return rows.length === 1 ? rows[0] : null;
+  };
+
+  // Pairs a semester's SGPA-summary row (stynumber, SGPA, CGPA) with its grade-card registration
+  // (courses). Throws rather than guessing, so a report never mixes two semesters' data.
+  const resolveReportSemester = async (semRow, registrations) => {
+    if (semRow) {
+      let registration = registrations.find((s) => sameRegistration(semRow, s));
+      let card = registration ? await loadGradeCard(registration) : null;
+      if (!registration) {
+        for (const s of registrations) {
+          if (s.is_grade_card_complete === false) continue;
+          const candidate = await loadGradeCard(s).catch(() => null);
+          if (candidate && uniqueSemRowFor(candidate) === semRow) {
+            registration = s;
+            card = candidate;
+            break;
+          }
+        }
+      }
+      if (!registration) throw new Error(`Couldn't find the grade card for Semester ${semRow.stynumber}.`);
+      return { registration, card, semRow };
+    }
+
+    const registration = selectedGradeCardSem;
+    if (!registration) throw new Error("Select a semester first.");
+    const card = await loadGradeCard(registration);
+    const row = (semesterData || []).find((r) => sameRegistration(r, registration)) || (card && uniqueSemRowFor(card));
+    if (!row) throw new Error(`Couldn't match ${registration.registration_code} to a semester in your SGPA summary.`);
+    return { registration, card, semRow: row };
+  };
+
   const handleDownloadGradeReport = async (targetSemCard = null) => {
-    const semNumber = targetSemCard ? targetSemCard.stynumber : (selectedGradeCardSem ? selectedGradeCardSem.registration_code.charAt(0) : "1");
-    
+    const label = targetSemCard ? `Semester ${targetSemCard.stynumber}` : (selectedGradeCardSem?.registration_code || "the selected semester");
+
     setIsDownloadingGradeReport(true);
-    const toastId = showLoadingToast(`Compiling Report structure for Semester ${semNumber}...`, "grade-report-dl");
+    const toastId = showLoadingToast(`Preparing grade report for ${label}...`, "grade-report-dl");
     try {
       let currentGradeCardSems = gradeCardSemesters;
       if (currentGradeCardSems.length === 0) {
@@ -405,33 +478,8 @@ export default function Grades({
         setGradeCardSemesters(currentGradeCardSems);
       }
 
-      let activeRegistrationSem = selectedGradeCardSem;
-      if (targetSemCard) {
-        activeRegistrationSem = currentGradeCardSems.find(s => 
-          String(s.registration_code).includes(`SEM${semNumber}`) || 
-          String(s.registration_code).startsWith(semNumber) ||
-          String(s.registration_id) === String(targetSemCard.registration_id)
-        );
-      }
-
-      if (!activeRegistrationSem && currentGradeCardSems.length > 0) {
-        activeRegistrationSem = currentGradeCardSems.find(s => String(s.registration_code).includes(String(semNumber))) || currentGradeCardSems[0];
-      }
-
-      if (!activeRegistrationSem) {
-        throw new Error("Could not map active registration keys for this semester timeline entry.");
-      }
-
-      let detailedCoursesObj = gradeCards[activeRegistrationSem.registration_id];
-      if (!detailedCoursesObj) {
-        // FIXED ROUTINE: Directly await fresh extraction downstream into state references
-        const freshlyFetchedCard = await w.get_grade_card(activeRegistrationSem);
-        if (freshlyFetchedCard) {
-          freshlyFetchedCard.semesterId = activeRegistrationSem.registration_id;
-          setGradeCards(prev => ({ ...prev, [activeRegistrationSem.registration_id]: freshlyFetchedCard }));
-          detailedCoursesObj = freshlyFetchedCard;
-        }
-      }
+      const { card: detailedCoursesObj, semRow } = await resolveReportSemester(targetSemCard, currentGradeCardSems);
+      const semNumber = semRow.stynumber;
 
       const rawCoursesArray = getGradeCardItems(detailedCoursesObj);
       if (!rawCoursesArray || rawCoursesArray.length === 0) {
@@ -489,8 +537,8 @@ export default function Grades({
         studentname: studentMeta.studentname,
         instituteid: studentMeta.instituteid,
         studentinfolist: formattedCoursesList, 
-        sgpa: targetSemCard ? String(targetSemCard.sgpa) : (semesterData?.find(s => String(s.stynumber) === String(semNumber))?.sgpa || ""),
-        cgpa: targetSemCard ? String(targetSemCard.cgpa) : (semesterData?.find(s => String(s.stynumber) === String(semNumber))?.cgpa || ""),
+        sgpa: String(semRow.sgpa ?? ""),
+        cgpa: String(semRow.cgpa ?? ""),
         enrollmentno: studentMeta.enrollmentno,
         programmcode: studentMeta.programmcode, 
         branchcode: studentMeta.branchcode,
@@ -575,34 +623,21 @@ export default function Grades({
   };
 
   const handleMarksSemesterChange = async (value) => {
-    try {
-      const semester = marksSemesters.find((sem) => sem.registration_id === value);
-      setSelectedMarksSem(semester);
-      setMarksSelectedSemester(semester);
-      setMarksError(null);
-      if (!gradeCards[value]) {
-        try {
-          const data = await w.get_grade_card(semester);
+    const semester = marksSemesters.find((sem) => sem.registration_id === value);
+    if (!semester) return;
+    setSelectedMarksSem(semester);
+    setMarksSelectedSemester(semester);
+    // The marks themselves are loaded by the effect on selectedMarksSem, which knows which
+    // semester is on screen. Loading them here too, after the await below, could put an
+    // earlier semester's marks on screen. This only prefetches the grade card MarksCard uses.
+    if (!gradeCards[value]) {
+      try {
+        const data = await w.get_grade_card(semester);
+        if (data) {
           data.semesterId = value;
           setGradeCards((prev) => ({ ...prev, [value]: data }));
-        } catch (e) { }
-      }
-      if (marksData[value]) {
-        setMarksSemesterData(marksData[value]);
-        return;
-      }
-      const username = w.username || "user";
-      const cacheKey = `marks-${semester.registration_code}-${username}`;
-      const cached = await getFromCache(cacheKey);
-      if (cached) {
-        setMarksSemesterData(cached.data || cached);
-        setMarksData((prev) => ({ ...prev, [value]: cached.data || cached }));
-        setMarksCacheTimestamp(cached.timestamp || null);
-        setIsMarksFromCache(true);
-      }
-    } catch (error) {
-      console.error("Failed to change marks semester:", error);
-      showErrorToast("Marks Semester Error", error?.message || "Could not switch marks semester.");
+        }
+      } catch (e) { }
     }
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Calendar, Clock, MapPin, Armchair, Timer } from "lucide-react";
 import { ArtificialWebPortal } from "./scripts/artificialW";
 import { setExamDates } from '@/components/scripts/cache';
@@ -37,6 +37,9 @@ export default function Exams({
   const [examEvents, setExamEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isFromCache, setIsFromCache] = useState(false);
+  // An empty result still replaces examSemesters with a new [], which re-runs the fetch
+  // effect; this keeps it to one request per visit.
+  const semestersRequestedRef = useRef(false);
 
   const isOffline = w && (w instanceof ArtificialWebPortal || (w.constructor && w.constructor.name === 'ArtificialWebPortal'))
   
@@ -146,6 +149,8 @@ export default function Exams({
       if (isOffline) return; // Skip fetching when offline
       
       if (examSemesters.length === 0) {
+        if (semestersRequestedRef.current) return;
+        semestersRequestedRef.current = true;
         setLoading(true);
         try {
           const username = getUsername();
@@ -543,7 +548,9 @@ function ExamCard({ exam, formatDate, index }) {
   const isOngoing = timeDiff <= 0 && timeDiff > -2 * 60 * 60 * 1000; // Assume 2 hours duration
   const isCompleted = timeDiff <= -2 * 60 * 60 * 1000;
 
-  const { timeLeft } = useCountdown(examDateTime);
+  // Pass a number: a new Date each render would restart the countdown effect, and its
+  // setState would trigger another render, looping forever.
+  const { timeLeft } = useCountdown(examDateTime.getTime());
 
   const statusClasses = isCompleted
     ? "bg-muted/70 text-muted-foreground"

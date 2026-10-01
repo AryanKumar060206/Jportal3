@@ -256,3 +256,7 @@ export class ArtificialWebPortal {
     return { submitted: false, feedback_option, skipped: true };
   }
 }
+
+// Offline reads come straight from the cache, so writing them back would re-stamp stale
+// data as fresh and make the next online session skip its network refresh.
+export const isOfflinePortal = (w) => !!w && (w instanceof ArtificialWebPortal || w.constructor?.name === 'ArtificialWebPortal');
