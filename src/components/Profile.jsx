@@ -413,7 +413,7 @@ export default function Profile({
           { icon: Calendar, label: "Timetable", path: "/timetable" },
           { icon: MessageSquare, label: "Auto-Feedback Filler", path: "/feedback", hideOnPortal: true },
           { icon: DollarSign, label: "Fee", path: "/fee", hideOnPortal: true },
-        ].filter(btn => !btn.hideOnPortal || !((w && w.constructor.name === 'ArtificialWebPortal'))).map((btn, i) => (
+        ].filter(btn => !btn.hideOnPortal || !isOfflinePortal(w)).map((btn, i) => (
           <motion.button
             key={i}
             whileHover={{ scale: 1.05 }}

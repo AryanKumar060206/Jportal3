@@ -227,15 +227,14 @@ const Feedback = ({ w, serialize_payload }) => {
     setRandomized(true);
   };
 
+  // Only the portal's own "already submitted" message counts. jsjiit puts every failed
+  // response's status JSON ("responseStatus", "errors", ...) in the message, so matching on
+  // those reported any save failure as already submitted.
   const isAlreadySubmitted = (err) => {
     if (!err) return false;
-    if (err.status === 417) return true;
-    const msg = (err.message || '').toLowerCase();
-    if (msg.includes('feedback already submit') || msg.includes('feedback already sumbit')) return true;
-    if (msg.includes('responseStatus') || msg.includes('errors') || msg.includes('"responsestatus"')) return true;
-    if (err.responseStatus === 'Failure') return true;
-    if (Array.isArray(err.errors) && err.errors.some(e => /feedback already sumbit/i.test(e))) return true;
-    return false;
+    const alreadySubmitted = /feedback already (submit|sumbit)/i;
+    if (alreadySubmitted.test(err.message || '')) return true;
+    return Array.isArray(err.errors) && err.errors.some(e => alreadySubmitted.test(e));
   };
 
   const buildSavePayload = (subject, questions_to_submit) => ({
