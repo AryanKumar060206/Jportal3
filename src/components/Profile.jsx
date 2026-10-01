@@ -30,6 +30,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { Helmet } from 'react-helmet-async';
 import { saveProfileDataToCache, getProfileDataFromCache, getProfileDataRaw } from '@/components/scripts/cache';
+import { isOfflinePortal } from './scripts/artificialW';
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -99,7 +100,9 @@ export default function Profile({
       try {
         const data = await w.get_personal_info();
         setProfileData(data);
-        try { await saveProfileDataToCache(data); } catch (e) { }
+        if (!isOfflinePortal(w)) {
+          try { await saveProfileDataToCache(data); } catch (e) { }
+        }
       } catch (error) {
         console.error("Failed to fetch profile data:", error);
       } finally {

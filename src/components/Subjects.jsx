@@ -12,7 +12,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Empty } from "@/components/ui/empty"
 import { Loader2, Calendar, Eye, ArrowLeft, BookOpen, ListChecks} from "lucide-react"
 import { getRegisteredSubjectsFromCache, saveRegisteredSubjectsToCache, getSubjectChoicesFromCache, saveSubjectChoicesToCache } from '@/components/scripts/cache'
-import { getUsername } from '@/components/scripts/cache' 
+import { getUsername } from '@/components/scripts/cache'
+import { isOfflinePortal } from './scripts/artificialW'
 
 const getSubjectSemesterStorageKey = (username) => `lastSelectedSubjectSemester-${username || 'user'}`;
 const getStoredSubjectSemesterId = (username) => {
@@ -42,6 +43,7 @@ export default function Subjects({
   setSelectedSem,
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const isOffline = isOfflinePortal(w)
   const [loading, setLoading] = useState(!semestersData)
   const [subjectsLoading, setSubjectsLoading] = useState(!subjectData)
   const [activeTab, setActiveTab] = useState("registered")
@@ -143,7 +145,9 @@ export default function Subjects({
             ...prev,
             [semester.registration_id]: data,
           }));
-          try { await saveRegisteredSubjectsToCache(data, username, semester); } catch (e) {}
+          if (!isOffline) {
+            try { await saveRegisteredSubjectsToCache(data, username, semester); } catch (e) {}
+          }
 
           if (data?.subjects && data.subjects.length > 0) {
             setSelectedSem(semester);
@@ -289,7 +293,9 @@ export default function Subjects({
   useEffect(() => {
     const fetchChoicesForSelectedSemester = async () => {
       const username = w.username || getUsername() || 'user';
-      if (selectedSem && !subjectChoices?.[selectedSem.registration_id]) {
+      // Check for undefined, not falsy: a semester with no choices stores null, and refetching
+      // on null would update subjectChoices and re-run this effect forever.
+      if (selectedSem && subjectChoices?.[selectedSem.registration_id] === undefined) {
         setChoicesLoading(true)
         try {
           const cachedChoices = await getSubjectChoicesFromCache(username, selectedSem);
@@ -306,7 +312,9 @@ export default function Subjects({
             ...prev,
             [selectedSem.registration_id]: choicesData,
           }))
-          try { await saveSubjectChoicesToCache(choicesData, username, selectedSem); } catch (e) {}
+          if (!isOffline) {
+            try { await saveSubjectChoicesToCache(choicesData, username, selectedSem); } catch (e) {}
+          }
         } catch (err) {
           console.error("Error fetching subject choices:", err)
           showErrorToast('Subject Choices', err?.message || 'Could not load subject choices.');
@@ -321,8 +329,8 @@ export default function Subjects({
 
   const handleSemesterChange = async (value) => {
     setSubjectsLoading(true)
+    const semester = semestersData?.semesters?.find((sem) => sem.registration_id === value)
     try {
-      const semester = semestersData?.semesters?.find((sem) => sem.registration_id === value)
       setSelectedSem(semester)
 
       const username = w.username || getUsername() || 'user';
@@ -341,14 +349,18 @@ export default function Subjects({
           ...prev,
           [semester.registration_id]: data,
         }))
-        try { await saveRegisteredSubjectsToCache(data, username, semester); } catch (e) {}
+        if (!isOffline) {
+          try { await saveRegisteredSubjectsToCache(data, username, semester); } catch (e) {}
+        }
       }
     } catch (err) {
       showErrorToast('Subjects', err?.message || 'Failed to load subjects for this semester.');
-      setSubjectData((prev) => ({
-        ...prev,
-        [semester.registration_id]: { error: err.message },
-      }));
+      if (semester) {
+        setSubjectData((prev) => ({
+          ...prev,
+          [semester.registration_id]: { error: err.message },
+        }));
+      }
     } finally {
       setSubjectsLoading(false)
     }
@@ -386,7 +398,9 @@ export default function Subjects({
         semester: nextSem,
         choices: choicesData
       })
-      try { await saveSubjectChoicesToCache(choicesData, username, nextSem); } catch (e) {}
+      if (!isOffline) {
+        try { await saveSubjectChoicesToCache(choicesData, username, nextSem); } catch (e) {}
+      }
     } catch (err) {
       console.error("Error fetching next semester choices:", err)
       showErrorToast('Subject Choices', err?.message || 'Could not load next semester choices.');

@@ -10,6 +10,7 @@ import {
   saveSemestersToCache,
 } from "@/components/scripts/cache";
 import { getUsername } from '@/components/scripts/cache';
+import { isOfflinePortal } from "./scripts/artificialW";
 import AttendanceCard from "./AttendanceCard";
 import AttendanceDaily from "./AttendanceDaily";
 import {
@@ -88,7 +89,8 @@ const Attendance = ({
   const [cacheTimestamp, setCacheTimestamp] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFromCache, setIsFromCache] = useState(false);
-  
+  const isOffline = isOfflinePortal(w);
+
   const fetchAttemptsRef = useRef(new Set());
 
   const [sortOrder, setSortOrder] = useState(() => {
@@ -196,9 +198,11 @@ const Attendance = ({
           latest_semester: latestSem,
         });
         const username = (getUsername() || w.username || 'user');
-        try {
-          await saveSemestersToCache(meta.semesters, username);
-        } catch (e) { }
+        if (!isOffline) {
+          try {
+            await saveSemestersToCache(meta.semesters, username);
+          } catch (e) { }
+        }
         const storedSemesterId = getStoredAttendanceSemesterId(username);
         const storedSemester = storedSemesterId
           ? meta.semesters.find(sem => sem.registration_id === storedSemesterId)
@@ -221,18 +225,15 @@ const Attendance = ({
           setIsAttendanceMetaLoading(false);
           setIsAttendanceDataLoading(false);
 
-          if (cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+          if (isOffline || (cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION))) {
             return;
           }
 
+          // Background refresh: on failure keep showing the cached attendance.
           setIsRefreshing(true);
           try {
             const data = await w.get_attendance(header, semesterToLoad);
             if (!data) {
-              setAttendanceData((prev) => ({
-                ...prev,
-                [semesterToLoad.registration_id]: { error: 'No cached attendance available' },
-              }));
               setIsRefreshing(false);
               return;
             }
@@ -244,13 +245,8 @@ const Attendance = ({
             setCacheTimestamp(Date.now());
             setIsFromCache(false);
           } catch (error) {
-            showErrorToast("Failed to fetch attendance", error.message || "Could not load cached attendance data");
-            setAttendanceData((prev) => ({
-              ...prev,
-              [semesterToLoad.registration_id]: {
-                error: error.message
-              },
-            }));
+            console.warn("Attendance refresh failed:", error);
+            showWarningToast("Couldn't refresh attendance", "Showing cached data instead.");
           }
           setIsRefreshing(false);
           return;
@@ -262,7 +258,7 @@ const Attendance = ({
             [semesterToLoad.registration_id]: data,
           }));
           setSelectedSem(semesterToLoad);
-          await saveAttendanceToCache(data, username, semesterToLoad);
+          if (!isOffline) await saveAttendanceToCache(data, username, semesterToLoad);
           setCacheTimestamp(Date.now());
         } catch (error) {
           showErrorToast("Failed to fetch attendance", error.message || "Unable to load attendance data");
@@ -293,7 +289,8 @@ const Attendance = ({
     const username = (getUsername() || w.username || 'user');
     setSelectedSem(semester);
     saveStoredAttendanceSemester(username, semester);
-    if (attendanceData[value]) {
+    // An { error } entry is a failed load, not data: fall through and try again.
+    if (attendanceData[value] && !attendanceData[value].error) {
       setIsFromCache(false);
       setCacheTimestamp(null);
       setIsRefreshing(false);
@@ -312,17 +309,18 @@ const Attendance = ({
       setIsFromCache(true);
       setIsAttendanceDataLoading(false);
 
-      if (cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+      if (isOffline || (cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION))) {
         return;
       }
 
+      // Background refresh: on failure keep showing the cached attendance.
       setIsRefreshing(true);
       try {
         const meta = await w.get_attendance_meta();
         if (!meta) throw new Error('No attendance metadata available');
         const header = (meta.latest_header && meta.latest_header()) || null;
         const data = await w.get_attendance(header, semester);
-        if (!data) throw new Error('No cached attendance available');
+        if (!data) throw new Error('No attendance data returned');
         setAttendanceData((prev) => ({
           ...prev,
           [value]: data,
@@ -331,11 +329,8 @@ const Attendance = ({
         setCacheTimestamp(Date.now());
         setIsFromCache(false);
       } catch (error) {
-        showErrorToast("Fetch Error", error.message || "Could not load attendance data");
-        setAttendanceData((prev) => ({
-          ...prev,
-          [value]: { error: error.message },
-        }));
+        console.warn("Attendance refresh failed:", error);
+        showWarningToast("Couldn't refresh attendance", "Showing cached data instead.");
       }
       setIsRefreshing(false);
       return;
@@ -348,7 +343,7 @@ const Attendance = ({
         ...prev,
         [value]: data,
       }));
-      await saveAttendanceToCache(data, username, semester);
+      if (!isOffline) await saveAttendanceToCache(data, username, semester);
       setCacheTimestamp(Date.now());
     } catch (error) {
       showErrorToast("Fetch Error", error.message || "Could not load attendance data");
@@ -463,7 +458,7 @@ const Attendance = ({
           [subject.name]: cached.data || cached,
         }));
         setSubjectCacheStatus(p => ({ ...p, [subject.name]: 'cached' }));
-        if (cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+        if (isOffline || (cached.timestamp && (Date.now() - cached.timestamp < CACHE_DURATION))) {
           return;
         }
 
@@ -538,7 +533,7 @@ const Attendance = ({
         [subject.name]: freshData,
       }));
 
-      await saveSubjectDataToCache(freshData, subject.name, username, selectedSem);
+      if (!isOffline) await saveSubjectDataToCache(freshData, subject.name, username, selectedSem);
       setSubjectCacheStatus(p => ({ ...p, [subject.name]: 'cached' }));
     } catch (error) {
       console.error(`Failed to fetch fresh subject attendance for ${subject.name}:`, error);

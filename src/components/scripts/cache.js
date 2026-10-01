@@ -35,7 +35,8 @@ export const saveToCache = async (key, data, expirationHours = 24) => {
     timestamp: Date.now(),
     expiration: Date.now() + (expirationHours * 60 * 60 * 1000)
   };
-  localStorage.setItem(key, JSON.stringify(cacheData));
+  // A failed write (e.g. storage quota) must not turn a successful fetch into an error.
+  try { localStorage.setItem(key, JSON.stringify(cacheData)); } catch (e) { console.warn('Could not write cache:', key, e); }
 };
 
 export const getFromCache = async (key) => {
@@ -183,12 +184,17 @@ export const findRegisteredSemestersInLocalStorage = () => {
   }
 };
 
+// The find* fallbacks must match this user AND this semester: matching either one alone
+// returned another semester's (or another student's) data.
+const isUserSemesterKey = (key, prefix, username, regCode) =>
+  !!regCode && key.startsWith(`${prefix}${username || ''}-`) && key.includes(String(regCode));
+
 export const findAttendanceInLocalStorage = (username, regCode) => {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (key.startsWith('attendance-') && (key.includes(regCode) || key.includes(username || ''))) {
+      if (isUserSemesterKey(key, 'attendance-', username, regCode)) {
         const raw = JSON.parse(localStorage.getItem(key) || 'null');
         if (raw) return raw;
       }
@@ -203,7 +209,7 @@ export const findRegisteredSubjectsFromLocalStorage = (username, regCode) => {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (key.startsWith(prefix) && (key.includes(regCode) || key.includes(username || ''))) {
+      if (isUserSemesterKey(key, prefix, username, regCode)) {
         const raw = JSON.parse(localStorage.getItem(key) || 'null');
         if (raw && raw.data) return raw.data;
         if (raw) return raw;
@@ -218,7 +224,7 @@ export const findSubjectDataFromLocalStorage = (subjectId, username, regCode) =>
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (key.startsWith(`subject-${subjectId}-${username}-`)) {
+      if (isUserSemesterKey(key, `subject-${subjectId}-`, username, regCode)) {
         const raw = JSON.parse(localStorage.getItem(key) || 'null');
         if (raw && raw.data) return raw.data;
         if (raw) return raw;
@@ -234,7 +240,7 @@ export const findSubjectChoicesFromLocalStorage = (username, regCode) => {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (key.startsWith(prefix) && (key.includes(regCode) || key.includes(username || ''))) {
+      if (isUserSemesterKey(key, prefix, username, regCode)) {
         const raw = JSON.parse(localStorage.getItem(key) || 'null');
         if (raw && raw.data) return raw.data;
         if (raw) return raw;
@@ -367,7 +373,15 @@ export const setSelectedPreset = (id) => { try { localStorage.setItem('selectedP
 export const getShowTimetableInNavbar = () => { try { return localStorage.getItem('showTimetableInNavbar') === 'true'; } catch (e) { return false; } };
 export const setShowTimetableInNavbar = (v) => { try { localStorage.setItem('showTimetableInNavbar', v ? 'true' : 'false'); } catch (e) { } };
 
-export const getProfileDataRaw = () => { try { const raw = localStorage.getItem('profileData') || localStorage.getItem('pd') || '{}'; return JSON.parse(raw); } catch (e) { return {}; } };
+// Returns the profile itself: 'profileData' is written by saveToCache, so it's wrapped in
+// { data, timestamp, expiration }; the legacy 'pd' key holds the bare profile.
+export const getProfileDataRaw = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('profileData') || localStorage.getItem('pd') || '{}');
+    const isCacheEnvelope = parsed && typeof parsed === 'object' && 'data' in parsed && 'expiration' in parsed;
+    return (isCacheEnvelope ? parsed.data : parsed) || {};
+  } catch (e) { return {}; }
+};
 
 export const clearAllCache = () => { try { localStorage.clear(); } catch (e) { } };
 export const getCgpaCalculatorSemesters = () => { try { const raw = localStorage.getItem('cgpaCalculatorSemesters'); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } };
